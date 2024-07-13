@@ -17,17 +17,15 @@ pub async fn stream_completion(
 ) -> Result<BoxStream<'static, Result<ResponseStreamEvent, OpenAiClientError>>, OpenAiClientError> {
     let uri = format!("{}/chat/completions", api_url);
 
-    let request = client
+    let mut request = client
         .post(&uri)
         .header("Content-Type", "application/json")
         .header("Authorization", format!("Bearer {}", api_key))
         .json(&request);
 
-    let request = if let Some(low_speed_timeout) = low_speed_timeout {
-        request.timeout(low_speed_timeout)
-    } else {
-        request
-    };
+    if let Some(low_speed_timeout) = low_speed_timeout {
+        request = request.timeout(low_speed_timeout);
+    }
 
     let response = request.send().await?;
 
@@ -35,16 +33,24 @@ pub async fn stream_completion(
         let stream = response.bytes_stream().filter_map(|item| async {
             match item {
                 Ok(bytes) => {
-                    let line = std::str::from_utf8(&bytes).ok()?;
-                    let line = line.strip_prefix("data: ")?;
-                    if line == "[DONE]" {
-                        None
-                    } else {
-                        match serde_json::from_str(line) {
-                            Ok(parsed) => Some(Ok(parsed)),
-                            Err(error) => Some(Err(OpenAiClientError::ParseResponseFailed(error))),
+                    let content = std::str::from_utf8(&bytes).ok()?.trim();
+                    for line in content.split("\n\n") {
+                        let line = line.trim();
+                        if line == "[DONE]" {
+                            continue;
+                        } else if let Some(line) = line.strip_prefix("data: ") {
+                            match serde_json::from_str::<ResponseStreamEvent>(line) {
+                                Ok(parsed) => return Some(Ok(parsed)),
+                                Err(error) => {
+                                    eprintln!("Error parsing stream event: {:?}", error);
+                                    return Some(Err(OpenAiClientError::ParseResponseFailed(
+                                        error,
+                                    )));
+                                }
+                            }
                         }
                     }
+                    None
                 }
                 Err(error) => Some(Err(OpenAiClientError::SendRequestFailed(error))),
             }
@@ -70,7 +76,7 @@ pub async fn stream_completion(
                 Err(OpenAiClientError::Custom(response.error.message))
             }
             _ => Err(OpenAiClientError::Custom(format!(
-                "Failed to connect to OpenAI API: {} {}",
+                "Failed to connect to OpenAi API: {} {}",
                 status, body
             ))),
         }
@@ -114,7 +120,6 @@ pub fn embed<'a>(
         model,
         input: texts.into_iter().collect(),
     };
-
     let body = serde_json::to_string(&request).unwrap();
 
     Box::pin(async move {

@@ -44,7 +44,6 @@ async fn main() {
         Err(error) => eprintln!("Failed to initiate streaming completion: {:?}", error),
     }
 
-    // 测试 embed 函数
     let texts = vec!["Hello world!", "How are you?"];
 
     match embed(

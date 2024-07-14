@@ -4,13 +4,13 @@ use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum OpenAiClientError {
-    #[error("HTTP request failed")]
+    #[error("HTTP request failed: {0}")]
     HttpRequestFailed(#[from] http::Error),
 
-    #[error("sending request failed")]
+    #[error("sending request failed: {0}")]
     SendRequestFailed(#[from] ReqwestError),
 
-    #[error("parsing response failed")]
+    #[error("parsing response failed: {0}")]
     ParseResponseFailed(#[from] SerdeError),
 
     #[error("invalid model id")]
